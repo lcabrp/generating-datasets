@@ -1,29 +1,34 @@
-"""
-Common helper functions used by multiple generators.
-"""
+"""Common helper functions used by multiple generators."""
 
+import json
 import random
 import uuid
 from datetime import datetime, timedelta
-from typing import List
+from typing import Sequence
 
 from faker import Faker
+
+from config import ORDER_STATUSES, PAYMENT_METHODS
 
 fake = Faker()
 
 
+def set_seed(seed: int) -> None:
+    """Seed Python random and Faker for reproducible generated datasets."""
+    random.seed(seed)
+    Faker.seed(seed)
+    fake.seed_instance(seed)
+
+
 def uuid4_str() -> str:
-    """Return a formatted uuid4 string."""
     return str(uuid.uuid4())
 
 
-def random_price(low=5.0, high=500.0) -> str:
-    """Return a price string with two decimals."""
+def random_price(low: float = 5.0, high: float = 500.0) -> str:
     return f"{random.uniform(low, high):.2f}"
 
 
-def random_weight(low=0.1, high=10.0) -> str:
-    """Return a weight string with one decimal."""
+def random_weight(low: float = 0.1, high: float = 10.0) -> str:
     return f"{random.uniform(low, high):.1f}"
 
 
@@ -36,13 +41,11 @@ def random_rating() -> float:
 
 
 def random_status() -> str:
-    return random.choice(
-        ["delivered", "shipped", "processing", "canceled", "returned"]
-    )
+    return random.choice(ORDER_STATUSES)
 
 
 def random_payment_method() -> str:
-    return random.choice(["credit_card", "paypal", "stripe", "bank_transfer"])
+    return random.choice(PAYMENT_METHODS)
 
 
 def random_coupon_code() -> str:
@@ -50,29 +53,25 @@ def random_coupon_code() -> str:
 
 
 def random_date(start_days_ago: int = 365, end_days_ago: int = 0) -> str:
-    """Random date in the past ‘start_days_ago’ to ‘end_days_ago’."""
     end_date = datetime.now() - timedelta(days=end_days_ago)
     start_date = datetime.now() - timedelta(days=start_days_ago)
     return fake.date_between(start_date=start_date, end_date=end_date).isoformat()
 
 
-def random_json_items(products: List[dict], max_items=5) -> str:
-    """
-    Build a JSON‑like string for transaction items.
-    Each item: product_id, quantity, unit_price
-    """
-    import json
+def random_json_items(products: Sequence[dict], max_items: int = 5) -> str:
+    """Build a JSON string containing transaction line items."""
+    if not products:
+        raise ValueError("At least one product is required to generate transaction items")
 
-    num_items = random.randint(1, max_items)
-    chosen = random.sample(products, k=num_items)
+    num_items = min(random.randint(1, max_items), len(products))
+    chosen = random.sample(list(products), k=num_items)
     items = []
-    for prod in chosen:
-        qty = random.randint(1, 5)
+    for product in chosen:
         items.append(
             {
-                "product_id": prod["product_id"],
-                "quantity": qty,
-                "unit_price": prod["price"],
+                "product_id": product["product_id"],
+                "quantity": random.randint(1, 5),
+                "unit_price": product["price"],
             }
         )
     return json.dumps(items)

@@ -1,26 +1,20 @@
-"""
-SQLite helper module.
-Creates a database, builds tables and bulk‑inserts the CSV data.
-"""
+"""SQLite helpers for loading generated retail CSV files."""
 
 import csv
 import sqlite3
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable
 
 from config import (
     CUSTOMERS_COLUMNS,
-    INVENTORY_COLUMNS,
-    TRANSACTIONS_COLUMNS,
     CUSTOMERS_CSV,
+    DATABASE_FILE,
+    INVENTORY_COLUMNS,
     INVENTORY_CSV,
+    TRANSACTIONS_COLUMNS,
     TRANSACTIONS_CSV,
-    DATABASE_FILE
 )
 
-# ------------------------------------------------------------------
-# 1️⃣  DATABASE STRUCTURE
-# ------------------------------------------------------------------
 TABLE_DEFINITIONS = {
     "customers": (
         """
@@ -72,55 +66,46 @@ TABLE_DEFINITIONS = {
             shipping_cost REAL,
             payment_method TEXT,
             coupon_code TEXT,
-            items TEXT,                     -- JSON string
+            items TEXT,
             FOREIGN KEY(customer_id) REFERENCES customers(customer_id)
-            -- note: product_id is stored inside `items` JSON
         );
         """,
         TRANSACTIONS_COLUMNS,
     ),
 }
 
-# Indexes to speed up queries
 INDEX_DEFINITIONS = [
     "CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions(customer_id);",
+    "CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);",
+    "CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category);",
 ]
 
 
-# ------------------------------------------------------------------
-# 2️⃣  HELPERS
-# ------------------------------------------------------------------
-
-def _open_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
+def _open_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else DATABASE_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(path.as_posix())
 
-def _execute_many(conn: sqlite3.Connection, sql: str, rows: Iterable[Tuple]) -> None:
-    """Execute many rows with SQLite.  Uses a transaction for speed."""
-    conn.execute("BEGIN")
-    conn.executemany(sql, rows)
-    conn.execute("COMMIT")
+
+def _execute_many(conn: sqlite3.Connection, sql: str, rows: Iterable[tuple]) -> None:
+    with conn:
+        conn.executemany(sql, rows)
 
 
-# ------------------------------------------------------------------
-# 3️⃣  PUBLIC API
-# ------------------------------------------------------------------
-def create_database(db_path: str | None = None) -> sqlite3.Connection:
-    """
-    Create the SQLite file, build tables and indexes.
-    Returns the opened Connection object.
-    """
-    conn = _open_connection(db_path)
+def create_database(db_path: str | Path | None = None, overwrite: bool = True) -> sqlite3.Connection:
+    """Create the SQLite database, tables, and indexes."""
+    path = Path(db_path) if db_path else DATABASE_FILE
+    if overwrite and path.exists():
+        path.unlink()
+
+    conn = _open_connection(path)
     cursor = conn.cursor()
 
-    # 3.1  Create tables
-    for table_name, (create_sql, _) in TABLE_DEFINITIONS.items():
+    for create_sql, _ in TABLE_DEFINITIONS.values():
         cursor.executescript(create_sql)
 
-    # 3.2  Create indexes
-    for idx_sql in INDEX_DEFINITIONS:
-        cursor.executescript(idx_sql)
+    for index_sql in INDEX_DEFINITIONS:
+        cursor.executescript(index_sql)
 
     conn.commit()
     return conn
@@ -132,48 +117,36 @@ def import_csv_to_table(
     csv_path: str | Path,
     limit: int | None = None,
 ) -> None:
-    """
-    Bulk‑load a CSV into the specified table.
-    If `limit` is provided, only import that many rows.
-    """
+    """Bulk-load a CSV into a known table."""
     if table_name not in TABLE_DEFINITIONS:
         raise ValueError(f"Unknown table: {table_name}")
 
     _, columns = TABLE_DEFINITIONS[table_name]
-    placeholders = ", ".join("?" * len(columns))
-    insert_sql = f"INSERT OR REPLACE INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+    placeholders = ", ".join("?" for _ in columns)
+    insert_sql = (
+        f"INSERT OR REPLACE INTO {table_name} ({', '.join(columns)}) "
+        f"VALUES ({placeholders})"
+    )
 
     rows = []
-    with open(csv_path, newline="", encoding="utf-8") as fh:
-        reader = csv.DictReader(fh)
+    with Path(csv_path).open(newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
         for i, row in enumerate(reader, start=1):
-            # Map the dict to a tuple in column order
-            vals = tuple(row[col] for col in columns)
-            rows.append(vals)
-
+            rows.append(tuple(row[col] for col in columns))
             if limit and i >= limit:
                 break
 
     if rows:
-        _execute_many(conn, insert_sql, rows)  # fast bulk insert
+        _execute_many(conn, insert_sql, rows)
 
 
-def load_all_csvs(conn: sqlite3.Connection, csv_dir: str | Path = ".") -> None:
-    """Convenience wrapper that imports all three CSV datasets."""
-    csv_dir = Path(csv_dir)
-
-    import_csv_to_table(
-        conn,
-        "customers",
-        csv_dir / CUSTOMERS_CSV,
-    )
-    import_csv_to_table(
-        conn,
-        "inventory",
-        csv_dir / INVENTORY_CSV,
-    )
-    import_csv_to_table(
-        conn,
-        "transactions",
-        csv_dir / TRANSACTIONS_CSV,
-    )
+def load_all_csvs(
+    conn: sqlite3.Connection,
+    customers_csv: str | Path = CUSTOMERS_CSV,
+    inventory_csv: str | Path = INVENTORY_CSV,
+    transactions_csv: str | Path = TRANSACTIONS_CSV,
+) -> None:
+    """Import all generated retail CSVs into SQLite."""
+    import_csv_to_table(conn, "customers", customers_csv)
+    import_csv_to_table(conn, "inventory", inventory_csv)
+    import_csv_to_table(conn, "transactions", transactions_csv)

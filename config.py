@@ -1,60 +1,84 @@
 """
-Application‑wide configuration.
+Configuration for the retail dataset generator.
+
+The defaults are intentionally modest enough for a laptop, but the CLI in
+main.py can override them for larger demo datasets.
 """
+
 from pathlib import Path
 
-# ---------------------------------------------------------
-# 1️⃣  Where all files will live
-# ---------------------------------------------------------
-DATA_DIR = Path("data")        # <-- change this to any folder you want
-DATA_DIR.mkdir(parents=True, exist_ok=True)   # create it on import
+DATA_DIR = Path("data")
+CUSTOMERS_FILE = "customers.csv"
+INVENTORY_FILE = "inventory.csv"
+TRANSACTIONS_FILE = "transactions.csv"
+DATABASE_FILE_NAME = "retail.db"
 
-# ---------------------------------------------------------
-# 2️⃣  CSV file names (full paths)
-# ---------------------------------------------------------
-CUSTOMERS_CSV   = DATA_DIR / "customers.csv"
-INVENTORY_CSV   = DATA_DIR / "inventory.csv"
-TRANSACTIONS_CSV = DATA_DIR / "transactions.csv"
+CUSTOMERS_CSV = DATA_DIR / CUSTOMERS_FILE
+INVENTORY_CSV = DATA_DIR / INVENTORY_FILE
+TRANSACTIONS_CSV = DATA_DIR / TRANSACTIONS_FILE
+DATABASE_FILE = DATA_DIR / DATABASE_FILE_NAME
 
-# ---------------------------------------------------------
-# 3️⃣  SQLite file (full path)
-# ---------------------------------------------------------
-DATABASE_FILE = DATA_DIR / "retail.db"
+DEFAULT_CUSTOMERS = 1_000
+DEFAULT_INVENTORY = 500
+DEFAULT_TRANSACTIONS = 250_000
+MAX_TRANSACTIONS = 5_000_000
+DEFAULT_SEED = 42
 
-# ------------------------------------------------------------------
-# Dataset sizes – edit these numbers to get the dataset you want
-# ------------------------------------------------------------------
-DEFAULT_CUSTOMERS = 1_000         # ≤ 10 000 recommended
-DEFAULT_INVENTORY = 500           # ≤ 5 000 recommended
-MAX_TRANSACTIONS = 5_000_000      # capped by program logic
-DEFAULT_TRANSACTIONS = 250_000    # <- actual value will be min(...)
+RETAIL_CATEGORIES = [
+    "Electronics",
+    "Books",
+    "Clothing",
+    "Home",
+    "Beauty",
+    "Sports",
+    "Toys",
+    "Automotive",
+    "Grocery",
+    "Office",
+]
 
-# ------------------------------------------------------------------
-# Filenames (change paths if you want them elsewhere)
-# ------------------------------------------------------------------
-CUSTOMERS_CSV = "customers.csv"
-INVENTORY_CSV = "inventory.csv"
-TRANSACTIONS_CSV = "transactions.csv"
+ORDER_STATUSES = ["delivered", "shipped", "processing", "canceled", "returned"]
+PAYMENT_METHODS = ["credit_card", "paypal", "stripe", "bank_transfer"]
 
-# ------------------------------------------------------------------
-# Column names – keep in sync with generators
-# ------------------------------------------------------------------
 CUSTOMERS_COLUMNS = [
-    "customer_id", "first_name", "last_name", "email", "phone",
-    "address", "city", "state", "zip_code", "country",
-    "date_of_birth", "gender", "signup_date",
+    "customer_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "address",
+    "city",
+    "state",
+    "zip_code",
+    "country",
+    "date_of_birth",
+    "gender",
+    "signup_date",
 ]
 
 INVENTORY_COLUMNS = [
-    "product_id", "sku", "name", "category", "brand",
-    "price", "weight", "stock_qty", "rating",
-    "description", "created_at",
+    "product_id",
+    "sku",
+    "name",
+    "category",
+    "brand",
+    "price",
+    "weight",
+    "stock_qty",
+    "rating",
+    "description",
+    "created_at",
 ]
 
 TRANSACTIONS_COLUMNS = [
-    "order_id", "order_date", "customer_id",
-    "shipping_address", "status", "total_amount",
-    "shipping_cost", "payment_method",
-    "coupon_code", "items",
+    "order_id",
+    "order_date",
+    "customer_id",
+    "shipping_address",
+    "status",
+    "total_amount",
+    "shipping_cost",
+    "payment_method",
+    "coupon_code",
+    "items",
 ]
-

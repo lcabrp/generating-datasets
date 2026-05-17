@@ -1,74 +1,87 @@
 #!/usr/bin/env python3
-"""
-One‑stop script that creates the 3 datasets.
-"""
+"""Generate related retail CSV datasets and optionally load them into SQLite."""
 
+import argparse
 import csv
-import os
-import random
-import sys
-from typing import List
-from db import create_database, load_all_csvs
+from pathlib import Path
 
 from config import (
+    CUSTOMERS_FILE,
+    DATABASE_FILE_NAME,
     DEFAULT_CUSTOMERS,
     DEFAULT_INVENTORY,
-    MAX_TRANSACTIONS,
+    DEFAULT_SEED,
     DEFAULT_TRANSACTIONS,
-    CUSTOMERS_CSV,
-    INVENTORY_CSV,
-    TRANSACTIONS_CSV,
+    INVENTORY_FILE,
+    MAX_TRANSACTIONS,
+    TRANSACTIONS_FILE,
 )
 from customers import generate_customers_csv
+from db import create_database, load_all_csvs
 from inventory import generate_inventory_csv
 from transactions import build_transactions
-from faker import Faker
-
-fake = Faker()
+from utils import set_seed
 
 
-def read_customers() -> List[dict]:
-    """Load customers so that transactions can reference real IDs."""
-    customers = []
-    with open(CUSTOMERS_CSV, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            customers.append(row)
-    return customers
+def read_customers(customers_csv: str | Path) -> list[dict]:
+    with Path(customers_csv).open(newline="", encoding="utf-8") as file:
+        return list(csv.DictReader(file))
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate related retail customers, inventory, and transactions datasets."
+    )
+    parser.add_argument("customers_pos", nargs="?", type=int, help="Backward-compatible customer count positional argument.")
+    parser.add_argument("--customers", type=int, default=None, help="Number of customer rows to generate.")
+    parser.add_argument("--inventory", "--products", dest="inventory", type=int, default=DEFAULT_INVENTORY, help="Number of inventory/product rows to generate.")
+    parser.add_argument("--transactions", type=int, default=DEFAULT_TRANSACTIONS, help="Number of transaction rows to generate.")
+    parser.add_argument("--max-transactions", type=int, default=MAX_TRANSACTIONS, help="Upper bound for transaction rows.")
+    parser.add_argument("--output-dir", type=Path, default=Path("data"), help="Directory for generated CSV and SQLite files.")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="Random seed for reproducible datasets.")
+    parser.add_argument("--skip-db", action="store_true", help="Only write CSV files; do not create SQLite database.")
+    return parser.parse_args()
 
 
 def main() -> None:
-    # ------------- 1️⃣ Create the customers ----------
-    print(f"Generating {DEFAULT_CUSTOMERS} customers → {CUSTOMERS_CSV}")
-    generate_customers_csv(DEFAULT_CUSTOMERS)
+    args = parse_args()
+    customer_count = args.customers if args.customers is not None else args.customers_pos
+    if customer_count is None:
+        customer_count = DEFAULT_CUSTOMERS
 
-    # ------------- 2️⃣ Create the inventory ----------
-    print(f"Generating {DEFAULT_INVENTORY} inventory items → {INVENTORY_CSV}")
-    products = generate_inventory_csv(DEFAULT_INVENTORY)
+    transaction_count = min(args.transactions, args.max_transactions)
+    output_dir = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ------------- 3️⃣ Determine transaction count ----------
-    # Pick a realistic number but never > MAX_TRANSACTIONS
-    num_trans = random.randint(50_000, MAX_TRANSACTIONS)
-    if num_trans > DEFAULT_TRANSACTIONS:
-        num_trans = DEFAULT_TRANSACTIONS
-    print(f"Generating {num_trans} transactions → {TRANSACTIONS_CSV}")
+    customers_csv = output_dir / CUSTOMERS_FILE
+    inventory_csv = output_dir / INVENTORY_FILE
+    transactions_csv = output_dir / TRANSACTIONS_FILE
+    database_path = output_dir / DATABASE_FILE_NAME
 
-    # ------------- 4️⃣ Load customers for reference ----------
-    customers = read_customers()
+    set_seed(args.seed)
 
-    # ------------- 5️⃣ Generate transactions ----------
-    build_transactions(customers, products, num_trans)
+    print(f"Generating {customer_count:,} customers -> {customers_csv}")
+    generate_customers_csv(customer_count, customers_csv)
 
-    print("\nAll three datasets are ready!")
-    print(f"Customers  → {CUSTOMERS_CSV}")
-    print(f"Inventory  → {INVENTORY_CSV}")
-    print(f"Transactions → {TRANSACTIONS_CSV}")
-    
-    # ---------- 6️⃣  Store data in SQLite ----------
-    db_conn = create_database()           # creates retail.db in the current folder
-    load_all_csvs(db_conn)                # bulk‑import CSVs
-    db_conn.close()
+    print(f"Generating {args.inventory:,} inventory items -> {inventory_csv}")
+    products = generate_inventory_csv(args.inventory, inventory_csv)
 
-    print("\n✅ All data have been stored in retail.db")
+    print(f"Generating {transaction_count:,} transactions -> {transactions_csv}")
+    customers = read_customers(customers_csv)
+    build_transactions(customers, products, transaction_count, transactions_csv)
+
+    if not args.skip_db:
+        print(f"Loading CSV files into SQLite -> {database_path}")
+        conn = create_database(database_path)
+        load_all_csvs(conn, customers_csv, inventory_csv, transactions_csv)
+        conn.close()
+
+    print("\nRetail dataset generation complete.")
+    print(f"Customers:    {customers_csv}")
+    print(f"Inventory:    {inventory_csv}")
+    print(f"Transactions: {transactions_csv}")
+    if not args.skip_db:
+        print(f"Database:     {database_path}")
 
 
 if __name__ == "__main__":

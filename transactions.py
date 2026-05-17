@@ -1,46 +1,47 @@
-"""
-Generate the transactions (orders) CSV.
-"""
+"""Generate the transactions/orders CSV."""
 
 import csv
-from typing import List
+import json
 import random
+from pathlib import Path
+from typing import Sequence
 
-from config import (
-    TRANSACTIONS_CSV,
-    TRANSACTIONS_COLUMNS,
-    MAX_TRANSACTIONS,
-    DEFAULT_TRANSACTIONS,
-    CUSTOMERS_CSV,
-)
+from config import DEFAULT_TRANSACTIONS, TRANSACTIONS_COLUMNS, TRANSACTIONS_CSV
 from utils import (
-    random_date,
-    random_status,
-    random_payment_method,
     random_coupon_code,
+    random_date,
     random_json_items,
+    random_payment_method,
+    random_status,
     uuid4_str,
 )
-from customers import build_customer  # to get list of customer IDs
-import json
-import csv
 
 
 def build_transactions(
-    customers: List[dict], products: List[dict], num_records: int
+    customers: Sequence[dict],
+    products: Sequence[dict],
+    num_records: int = DEFAULT_TRANSACTIONS,
+    output_path: str | Path = TRANSACTIONS_CSV,
 ) -> None:
-    with open(TRANSACTIONS_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=TRANSACTIONS_COLUMNS)
+    if not customers:
+        raise ValueError("At least one customer is required to generate transactions")
+    if not products:
+        raise ValueError("At least one product is required to generate transactions")
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=TRANSACTIONS_COLUMNS)
         writer.writeheader()
 
         for _ in range(num_records):
             customer = random.choice(customers)
-            # Generate one order per iteration
             items = random_json_items(products)
-            # Calculate total_amount from items (parsing json back)
-            total = 0
-            for item in json.loads(items):
-                total += float(item["unit_price"]) * item["quantity"]
+            total = sum(
+                float(item["unit_price"]) * item["quantity"]
+                for item in json.loads(items)
+            )
             shipping_cost = round(random.uniform(3, 15), 2)
 
             writer.writerow(
